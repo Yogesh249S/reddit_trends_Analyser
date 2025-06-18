@@ -19,21 +19,18 @@ jobs:
       - name: Build ingestion image with Reddit credentials
         shell: bash
         run: |
-          DOCKER_BUILDKIT=0 docker build \
-            --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
+          DOCKER_BUILDKIT=0 docker build --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
             --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} \
             --build-arg REDDIT_USER_AGENT="${{ secrets.REDDIT_USER_AGENT }}" \
             -t youruser/reddit-ingestor:latest \
-            -f ingestion/Dockerfile.ingestion 
-          ingestion
+            -f ingestion/Dockerfile.ingestion ingestion
 
       - name: Build processing image
         shell: bash
         run: |
           DOCKER_BUILDKIT=0 docker build \
             -t youruser/reddit-processor:latest \
-            -f processing/Dockerfile.processing 
-          processing
+            -f processing/Dockerfile.processing processing
 
       - name: Push images
         run: |
