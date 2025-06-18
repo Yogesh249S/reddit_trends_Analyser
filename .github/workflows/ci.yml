@@ -22,23 +22,15 @@ jobs:
 
       - name: Build and push ingestion image
         run: |
-          docker build \
-            -t ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest \
-            --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
-            --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} \
-            ./ingestion
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} ./ingestion
           docker push ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest
 
       - name: Build and push processing image
         run: |
-          docker build \
-            -t ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest \
-            ./processing
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest ./processing
           docker push ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest
 
       - name: Build and push dashboard image
         run: |
-          docker build \
-            -t ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest \
-            ./dashboard
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest ./dashboard
           docker push ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest
