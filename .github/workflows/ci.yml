@@ -29,15 +29,26 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # Extract metadata for tagging
+      - name: Extract metadata for ingestion
+        id: meta-ingestion
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       # Build ingestion service
-      - name: Build ingestion image
+      - name: Build and push ingestion image
         uses: docker/build-push-action@v5
         with:
           context: ./ingestion
           file: ./ingestion/Dockerfile
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest
-            ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:${{ env.IMAGE_TAG }}
+          tags: ${{ steps.meta-ingestion.outputs.tags }}
+          labels: ${{ steps.meta-ingestion.outputs.labels }}
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -46,28 +57,50 @@ jobs:
             REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }}
             REDDIT_USER_AGENT=${{ secrets.REDDIT_USER_AGENT }}
 
+      # Extract metadata for processing
+      - name: Extract metadata for processing
+        id: meta-processing
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/reddit-processing
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       # Build processing service
-      - name: Build processing image
+      - name: Build and push processing image
         uses: docker/build-push-action@v5
         with:
           context: ./processing
           file: ./processing/Dockerfile
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest
-            ${{ secrets.DOCKER_USERNAME }}/reddit-processing:${{ env.IMAGE_TAG }}
+          tags: ${{ steps.meta-processing.outputs.tags }}
+          labels: ${{ steps.meta-processing.outputs.labels }}
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Extract metadata for dashboard
+      - name: Extract metadata for dashboard
+        id: meta-dashboard
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       # Build dashboard service
-      - name: Build dashboard image
+      - name: Build and push dashboard image
         uses: docker/build-push-action@v5
         with:
           context: ./dashboard
           file: ./dashboard/Dockerfile
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest
-            ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:${{ env.IMAGE_TAG }}
+          tags: ${{ steps.meta-dashboard.outputs.tags }}
+          labels: ${{ steps.meta-dashboard.outputs.labels }}
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
