@@ -10,9 +10,6 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
-    env:
-      DOCKER_BUILDKIT: 1
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -27,19 +24,10 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push ingestion service
-        run: |
-          docker buildx build --push \
-            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest \
-            ./ingestion
+        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest ./ingestion
 
       - name: Build and push processing service
-        run: |
-          docker buildx build --push \
-            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest \
-            ./processing
+        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest ./processing
 
       - name: Build and push dashboard service
-        run: |
-          docker buildx build --push \
-            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest \
-            ./dashboard
+        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest ./dashboard
