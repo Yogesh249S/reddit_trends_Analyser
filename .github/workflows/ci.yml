@@ -16,6 +16,13 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Create and bootstrap Buildx builder
+        run: |
+          docker buildx create --use --name mybuilder
+          docker buildx inspect --bootstrap
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -24,10 +31,22 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push ingestion service
-        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest ./ingestion
+        run: |
+          docker buildx build \
+            --push \
+            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion:latest \
+            ./ingestion
 
       - name: Build and push processing service
-        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest ./processing
+        run: |
+          docker buildx build \
+            --push \
+            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-processing:latest \
+            ./processing
 
       - name: Build and push dashboard service
-        run: docker buildx build --push --tag ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest ./dashboard
+        run: |
+          docker buildx build \
+            --push \
+            --tag ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard:latest \
+            ./dashboard
