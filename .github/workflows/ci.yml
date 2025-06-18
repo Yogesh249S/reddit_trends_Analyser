@@ -59,4 +59,4 @@ jobs:
         run: |
           docker push youruser/reddit-ingestor:latest
           docker push youruser/reddit-processor:latest
-Fix Dockerfile paths in CI · Yogesh249S/reddit_trends_Analyser@1a38449 
+
