@@ -21,19 +21,37 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Verify secrets are set
-      - name: Verify Docker credentials
+      # Verify secrets are set and set default if needed
+      - name: Verify and set Docker configuration
         run: |
+          # Check if DOCKER_USERNAME is set
           if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
-            echo "❌ ERROR: DOCKER_USERNAME secret is not set"
+            echo "❌ ERROR: DOCKER_USERNAME secret is not set in GitHub repository secrets"
+            echo "Please go to Settings → Secrets and variables → Actions and add DOCKER_USERNAME"
             exit 1
           fi
+          
+          # Check if DOCKER_PASSWORD is set
           if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "❌ ERROR: DOCKER_PASSWORD secret is not set"
+            echo "❌ ERROR: DOCKER_PASSWORD secret is not set in GitHub repository secrets"
+            echo "Please go to Settings → Secrets and variables → Actions and add DOCKER_PASSWORD"
             exit 1
           fi
+          
+          # Set environment variables with validation
+          DOCKER_USER="${{ secrets.DOCKER_USERNAME }}"
+          if [ ${#DOCKER_USER} -lt 1 ]; then
+            echo "❌ ERROR: DOCKER_USERNAME is empty"
+            exit 1
+          fi
+          
           echo "✅ Docker credentials are configured"
-          echo "Docker username: ${{ secrets.DOCKER_USERNAME }}"
+          echo "Docker username: ${DOCKER_USER}"
+          
+          # Set image names
+          echo "INGESTION_IMAGE=${DOCKER_USER}/reddit-ingestion" >> $GITHUB_ENV
+          echo "PROCESSING_IMAGE=${DOCKER_USER}/reddit-processing" >> $GITHUB_ENV
+          echo "DASHBOARD_IMAGE=${DOCKER_USER}/reddit-dashboard" >> $GITHUB_ENV
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
@@ -41,13 +59,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Set image names as environment variables
-      - name: Set image names
-        run: |
-          echo "INGESTION_IMAGE=${{ secrets.DOCKER_USERNAME }}/reddit-ingestion" >> $GITHUB_ENV
-          echo "PROCESSING_IMAGE=${{ secrets.DOCKER_USERNAME }}/reddit-processing" >> $GITHUB_ENV
-          echo "DASHBOARD_IMAGE=${{ secrets.DOCKER_USERNAME }}/reddit-dashboard" >> $GITHUB_ENV
 
       # Build ingestion service
       - name: Build and push ingestion image
