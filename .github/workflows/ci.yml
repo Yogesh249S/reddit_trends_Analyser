@@ -1,38 +1,45 @@
-name: CI Build & Push
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
+
+    env:
+      DOCKER_BUILDKIT: 1
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to DockerHub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build ingestion image with Reddit credentials
-        run: |
-          export DOCKER_BUILDKIT=0 && \
-          docker build --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
-            --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} \
-            --build-arg REDDIT_USER_AGENT="${{ secrets.REDDIT_USER_AGENT }}" \
-            -t youruser/reddit-ingestor:latest \
-            -f ingestion/Dockerfile.ingestion ingestion
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build processing image
+      - name: Build and tag ingestion service
         run: |
-          export DOCKER_BUILDKIT=0 && \
-          docker build \
-            -t youruser/reddit-processor:latest \
-            -f processing/Dockerfile.processing processing
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion ./ingestion
 
-      - name: Push images
+      - name: Build and tag processing service
         run: |
-          docker push youruser/reddit-ingestor:latest
-          docker push youruser/reddit-processor:latest
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-processing ./processing
+
+      - name: Build and tag dashboard service
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard ./dashboard
+
+      - name: Push Docker images
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/reddit-ingestion
+          docker push ${{ secrets.DOCKER_USERNAME }}/reddit-processing
+          docker push ${{ secrets.DOCKER_USERNAME }}/reddit-dashboard
