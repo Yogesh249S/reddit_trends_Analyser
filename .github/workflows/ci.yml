@@ -1,29 +1,3 @@
-
-Skip to content
-Navigation Menu
-Yogesh249S
-reddit_trends_Analyser
-
-Code
-Issues
-Pull requests
-Actions
-Projects
-Wiki
-Security
-Insights
-
-    Settings
-
-CI Build & Push
-Fix Dockerfile paths in CI #4
-
-Jobs
-
-Run details
-
-Workflow file for this run
-.github/workflows/ci.yml at 1a38449
 name: CI Build & Push
 
 on:
