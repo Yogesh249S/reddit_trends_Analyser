@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
   ECS_CLUSTER: reddit-analysis-cluster
   ECS_SERVICE: reddit-analysis-service
   ECS_TASK_DEFINITION: reddit-analysis-taskdef
