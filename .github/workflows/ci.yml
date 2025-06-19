@@ -488,6 +488,6 @@ jobs:
       - name: Setup deployment success notification
         run: |
           echo "✅ Deployment completed successfully!"
-          echo "📊 Dashboard URL: https://your-alb-dns-name.eu-north-1.elb.amazonaws.com"
+          echo "📊 Dashboard URL: https://your-alb-dns-name.elb.amazonaws.com"
           echo "🔍 CloudWatch Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Freddit-analysis"
           echo "📈 ECS Service: https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/details"
