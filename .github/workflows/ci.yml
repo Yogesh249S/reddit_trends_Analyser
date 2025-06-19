@@ -210,7 +210,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 976193238194.dkr.ecr.eu-north-1.amazonaws.com/reddit-ingestion:latest
+          image-ref: reddit-ingestion:latest
           format: 'sarif'
           output: 'trivy-results.sarif'
 
