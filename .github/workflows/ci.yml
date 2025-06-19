@@ -139,6 +139,8 @@ jobs:
             aws ecr create-repository --repository-name $repo --region ${{ env.AWS_REGION }} --image-scanning-configuration scanOnPush=true
           done
 
+          
+
   # Integration tests
   integration-test:
     runs-on: ubuntu-latest
@@ -200,10 +202,25 @@ jobs:
           docker-compose down -v
           docker system prune -f
 
+  
+
     
 
   # Security scanning
-      - name: Build ingestion image with Reddit credentials
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build ingestion image
         run: |
           docker build ingestion \
             --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
@@ -211,13 +228,7 @@ jobs:
             --build-arg REDDIT_USER_AGENT="${{ secrets.REDDIT_USER_AGENT }}" \
             -t reddit-ingestion:latest \
             -f ingestion/Dockerfile.ingestion
-            
-  security-scan:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.event_name != 'pull_request'
-    
-    steps:
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -229,6 +240,24 @@ jobs:
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: 'trivy-results.sarif'
+
+  # security-scan:
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-test
+  #   if: github.event_name != 'pull_request'
+    
+  #   steps:
+  #     - name: Run Trivy vulnerability scanner
+  #       uses: aquasecurity/trivy-action@master
+  #       with:
+  #         image-ref: reddit-ingestion:latest
+  #         format: 'sarif'
+  #         output: 'trivy-results.sarif'
+
+  #     - name: Upload Trivy scan results to GitHub Security tab
+  #       uses: github/codeql-action/upload-sarif@v2
+  #       with:
+  #         sarif_file: 'trivy-results.sarif'
 
   # Deploy to ECS
   deploy-ecs:
