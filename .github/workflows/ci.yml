@@ -41,6 +41,11 @@ jobs:
         if: github.event_name != 'pull_request'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+        
+
+      - name: Log in to Amazon ECR
+        run: aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 976193238194.dkr.ecr.eu-north-1.amazonaws.com
+
 
       - name: Verify secrets and set image names
         id: build-info
