@@ -200,7 +200,18 @@ jobs:
           docker-compose down -v
           docker system prune -f
 
+    
+
   # Security scanning
+      - name: Build ingestion image with Reddit credentials
+        run: |
+          docker build ingestion \
+            --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
+            --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} \
+            --build-arg REDDIT_USER_AGENT="${{ secrets.REDDIT_USER_AGENT }}" \
+            -t reddit-ingestion:latest \
+            -f ingestion/Dockerfile.ingestion
+            
   security-scan:
     runs-on: ubuntu-latest
     needs: build-and-test
