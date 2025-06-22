@@ -25,13 +25,18 @@ class RedditAnalyzer:
         self.setup_database()
     
     def setup_kafka(self):
+
+        KAFKA_BOOTSTRAP = os.environ.get(
+            "KAFKA_BOOTSTRAP_SERVERS",
+            "b-1.redditmsk.so93vw.c3.kafka.eu-north-1.amazonaws.com:9092,b-2.redditmsk.so93vw.c3.kafka.eu-north-1.amazonaws.com:9092"
+        )
         """Setup Kafka consumer with retry logic"""
         self.consumer = None
         for attempt in range(30):
             try:
                 self.consumer = KafkaConsumer(
                     'daily_reddit_trends',
-                    bootstrap_servers='kafka:9092',
+                    bootstrap_servers=KAFKA_BOOTSTRAP,
                     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                     auto_offset_reset='earliest',
                     enable_auto_commit=True,

@@ -1,3 +1,30 @@
+# # daily_ingestion.py
+# import os
+# import json
+# import time
+# import praw
+# from kafka import KafkaProducer
+# from kafka.errors import NoBrokersAvailable
+#
+# # Read Kafka broker address from environment variable (MSK support)
+# KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+#
+# # Kafka producer setup
+# producer = None
+# for _ in range(10):
+#     try:
+#         producer = KafkaProducer(
+#             bootstrap_servers=KAFKA_BOOTSTRAP,
+#             value_serializer=lambda v: json.dumps(v).encode('utf-8')
+#         )
+#         print("Kafka producer connected.")
+#         break
+#     except NoBrokersAvailable:
+#         print("Kafka not available yet, retrying in 5 seconds...")
+#         time.sleep(5)
+# else:
+#     raise Exception("Kafka broker not available after multiple attempts")
+
 # daily_ingestion.py
 import os
 import json
@@ -7,7 +34,12 @@ from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
 
 # Read Kafka broker address from environment variable (MSK support)
-KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BOOTSTRAP = os.environ.get(
+    "KAFKA_BOOTSTRAP_SERVERS",
+    "b-1.redditmsk.so93vw.c3.kafka.eu-north-1.amazonaws.com:9092,b-2.redditmsk.so93vw.c3.kafka.eu-north-1.amazonaws.com:9092"
+)
+if not KAFKA_BOOTSTRAP:
+    raise RuntimeError("KAFKA_BOOTSTRAP_SERVERS is not set! Aborting.")
 
 # Kafka producer setup
 producer = None
@@ -24,6 +56,8 @@ for _ in range(10):
         time.sleep(5)
 else:
     raise Exception("Kafka broker not available after multiple attempts")
+
+# ... rest of your file ...
 
 # Reddit API setup
 reddit = praw.Reddit(
