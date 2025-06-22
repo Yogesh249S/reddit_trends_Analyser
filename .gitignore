@@ -1,0 +1,23 @@
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+crash.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.env
+
+# VSCode
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CI/test artifacts
+ignored_files/
+modules/
+old_ci/
+test_performance.py

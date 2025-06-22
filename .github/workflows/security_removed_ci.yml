@@ -1,0 +1,519 @@
+name: Enhanced Docker CI/CD Pipeline with AWS Deployment
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com
+  ECS_CLUSTER: educated-hamster-yp7pmw
+  ECS_SERVICE: reddit-analysis-service
+  ECS_TASK_DEFINITION: reddit-analysis-taskdef
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      ingestion-image: ${{ steps.build-info.outputs.ingestion-image }}
+      processing-image: ${{ steps.build-info.outputs.processing-image }}
+      dashboard-image: ${{ steps.build-info.outputs.dashboard-image }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: github.event_name != 'pull_request'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+
+      - name: Log in to Amazon ECR
+        run: aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 976193238194.dkr.ecr.eu-north-1.amazonaws.com
+
+
+      - name: Verify secrets and set image names
+        id: build-info
+        run: |
+          # Verify required secrets for deployment
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+              echo "❌ ERROR: AWS credentials not configured"
+              echo "Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in repository secrets"
+              exit 1
+            fi
+            
+            if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+              echo "❌ ERROR: AWS_ACCOUNT_ID secret not set"
+              exit 1
+            fi
+            
+            # ECR image names
+            INGESTION_IMAGE="${{ env.ECR_REGISTRY }}/reddit-ingestion"
+            PROCESSING_IMAGE="${{ env.ECR_REGISTRY }}/reddit-processing"
+            DASHBOARD_IMAGE="${{ env.ECR_REGISTRY }}/reddit-dashboard"
+          else
+            # Local build for PR
+            INGESTION_IMAGE="reddit-ingestion"
+            PROCESSING_IMAGE="reddit-processing"
+            DASHBOARD_IMAGE="reddit-dashboard"
+          fi
+          
+          echo "ingestion-image=${INGESTION_IMAGE}" >> $GITHUB_OUTPUT
+          echo "processing-image=${PROCESSING_IMAGE}" >> $GITHUB_OUTPUT
+          echo "dashboard-image=${DASHBOARD_IMAGE}" >> $GITHUB_OUTPUT
+          
+          echo "✅ Build configuration set"
+          echo "Ingestion image: ${INGESTION_IMAGE}"
+          echo "Processing image: ${PROCESSING_IMAGE}"
+          echo "Dashboard image: ${DASHBOARD_IMAGE}"
+      # Build and push ingestion service
+      - name: Build and push ingestion image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ingestion
+          file: ./ingestion/Dockerfile
+          tags: |
+            ${{ steps.build-info.outputs.ingestion-image }}:latest
+            ${{ steps.build-info.outputs.ingestion-image }}:${{ github.sha }}
+          push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }}
+            REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }}
+            REDDIT_USER_AGENT=${{ secrets.REDDIT_USER_AGENT }}
+      # Build and push processing service
+      - name: Build and push processing image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./processing
+          file: ./processing/Dockerfile
+          tags: |
+            ${{ steps.build-info.outputs.processing-image }}:latest
+            ${{ steps.build-info.outputs.processing-image }}:${{ github.sha }}
+          push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # Build and push dashboard service
+      - name: Build and push dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dashboard
+          file: ./dashboard/Dockerfile
+          tags: |
+            ${{ steps.build-info.outputs.dashboard-image }}:latest
+            ${{ steps.build-info.outputs.dashboard-image }}:${{ github.sha }}
+          push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # Create ECR repositories if they don't exist
+      - name: Create ECR repositories
+        if: github.event_name != 'pull_request'
+        run: |
+          repositories=("reddit-ingestion" "reddit-processing" "reddit-dashboard")
+          for repo in "${repositories[@]}"; do
+            aws ecr describe-repositories --repository-names $repo --region ${{ env.AWS_REGION }} || \
+            aws ecr create-repository --repository-name $repo --region ${{ env.AWS_REGION }} --image-scanning-configuration scanOnPush=true
+          done
+          
+  # Integration tests
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start test environment
+        run: |
+          # Create test environment file
+          echo "REDDIT_CLIENT_ID=test" > .env
+          echo "REDDIT_CLIENT_SECRET=test" >> .env
+          echo "REDDIT_USER_AGENT=test" >> .env
+          
+          # Start infrastructure services
+          docker-compose up -d zookeeper kafka postgres
+          
+          # Wait for services to be ready
+          sleep 45
+      - name: Run integration tests
+        run: |
+          # Test Kafka connectivity
+          docker-compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list
+          
+          # Test PostgreSQL connectivity
+          docker-compose exec -T postgres pg_isready -U reddit
+          
+          # Test table creation
+          docker-compose exec -T postgres psql -U reddit -d reddit -c "\dt"
+          
+          # Run performance test
+          python3 -c "
+          import psycopg2
+          import time
+          
+          # Test database connection
+          conn = psycopg2.connect(
+              host='localhost',
+              dbname='reddit',
+              user='reddit',
+              password='reddit'
+          )
+          print('✅ Database connection successful')
+          
+          # Test table exists
+          cur = conn.cursor()
+          cur.execute('SELECT COUNT(*) FROM post_analysis LIMIT 1')
+          print('✅ Tables accessible')
+          conn.close()
+          "
+      - name: Cleanup test environment
+        if: always()
+        run: |
+          docker-compose down -v
+          docker system prune -f
+  
+
+    
+
+  # # Security scanning
+  # security-scan:
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-test
+  #   if: github.event_name != 'pull_request'
+    
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+
+  #     - name: Log in to DockerHub
+  #       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+  #     - name: Build ingestion image
+  #       run: |
+  #         docker build ingestion \
+  #           --build-arg REDDIT_CLIENT_ID=${{ secrets.REDDIT_CLIENT_ID }} \
+  #           --build-arg REDDIT_CLIENT_SECRET=${{ secrets.REDDIT_CLIENT_SECRET }} \
+  #           --build-arg REDDIT_USER_AGENT="${{ secrets.REDDIT_USER_AGENT }}" \
+  #           -t reddit-ingestion:latest \
+  #           -f ingestion/Dockerfile.ingestion
+
+  #     - name: Run Trivy vulnerability scanner
+  #       uses: aquasecurity/trivy-action@master
+  #       with:
+  #         image-ref: reddit-ingestion:latest
+  #         format: 'sarif'
+  #         output: 'trivy-results.sarif'
+
+  #     - name: Upload Trivy scan results to GitHub Security tab
+  #       uses: github/codeql-action/upload-sarif@v2
+  #       with:
+  #         sarif_file: 'trivy-results.sarif'
+
+  # security-scan:
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-test
+  #   if: github.event_name != 'pull_request'
+    
+  #   steps:
+  #     - name: Run Trivy vulnerability scanner
+  #       uses: aquasecurity/trivy-action@master
+  #       with:
+  #         image-ref: reddit-ingestion:latest
+  #         format: 'sarif'
+  #         output: 'trivy-results.sarif'
+
+  #     - name: Upload Trivy scan results to GitHub Security tab
+  #       uses: github/codeql-action/upload-sarif@v2
+  #       with:
+  #         sarif_file: 'trivy-results.sarif'
+
+  # Deploy to ECS
+  deploy-ecs:
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy infrastructure with CDK/CloudFormation
+        run: |
+          # Create ECS cluster if it doesn't exist
+          aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }} || \
+          aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
+      - name: Render ECS task definition
+        id: render-task-def
+        run: |
+          # Create task definition JSON
+          cat > task-definition.json << EOF
+          {
+            "family": "${{ env.ECS_TASK_DEFINITION }}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "1024",
+            "memory": "2048",
+            "executionRoleArn": "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskExecutionRole",
+            "taskRoleArn": "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecsTaskRole",
+            "containerDefinitions": [
+              {
+                "name": "reddit-ingestion",
+                "image": "${{ needs.build-and-test.outputs.ingestion-image }}:${{ github.sha }}",
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/reddit-analysis",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ingestion"
+                  }
+                },
+                "environment": [
+                  {"name": "KAFKA_BOOTSTRAP_SERVERS", "value": "kafka:9092"}
+                ],
+                "secrets": [
+                  {"name": "REDDIT_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:reddit-api:REDDIT_CLIENT_ID"},
+                  {"name": "REDDIT_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:reddit-api:REDDIT_CLIENT_SECRET"},
+                  {"name": "REDDIT_USER_AGENT", "valueFrom": "arn:aws:secretsmanager:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:secret:reddit-api:REDDIT_USER_AGENT"}
+                ]
+              },
+              {
+                "name": "reddit-processing",
+                "image": "${{ needs.build-and-test.outputs.processing-image }}:${{ github.sha }}",
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/reddit-analysis",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "processing"
+                  }
+                },
+                "environment": [
+                  {"name": "KAFKA_BOOTSTRAP_SERVERS", "value": "kafka:9092"},
+                  {"name": "POSTGRES_HOST", "value": "postgres"},
+                  {"name": "POSTGRES_DB", "value": "reddit"},
+                  {"name": "POSTGRES_USER", "value": "reddit"},
+                  {"name": "POSTGRES_PASSWORD", "value": "reddit"}
+                ]
+              },
+              {
+                "name": "reddit-dashboard",
+                "image": "${{ needs.build-and-test.outputs.dashboard-image }}:${{ github.sha }}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8501,
+                    "protocol": "tcp"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/reddit-analysis",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "dashboard"
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+          
+          echo "task-definition-file=task-definition.json" >> $GITHUB_OUTPUT
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition-file }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Deployment notification
+        run: |
+          echo "🚀 Successfully deployed to ECS!"
+          echo "Cluster: ${{ env.ECS_CLUSTER }}"
+          echo "Service: ${{ env.ECS_SERVICE }}"
+          echo "Images deployed:"
+          echo "  - ${{ needs.build-and-test.outputs.ingestion-image }}:${{ github.sha }}"
+          echo "  - ${{ needs.build-and-test.outputs.processing-image }}:${{ github.sha }}"
+          echo "  - ${{ needs.build-and-test.outputs.dashboard-image }}:${{ github.sha }}"
+  # Optional: Deploy to Lambda for serverless components
+  deploy-lambda:
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install boto3 awscli
+      - name: Package and deploy Lambda functions
+        run: |
+          # Create a simple Lambda function for periodic tasks
+          mkdir -p lambda-package
+          
+          cat > lambda-package/lambda_function.py << 'EOF'
+          import json
+          import boto3
+          import os
+          from datetime import datetime
+          
+          def lambda_handler(event, context):
+              """
+              Lambda function to trigger ECS tasks or perform maintenance
+              """
+              ecs = boto3.client('ecs')
+              
+              # Trigger ECS task for data processing
+              response = ecs.run_task(
+                  cluster=os.environ['ECS_CLUSTER'],
+                  taskDefinition=os.environ['TASK_DEFINITION'],
+                  launchType='FARGATE',
+                  networkConfiguration={
+                      'awsvpcConfiguration': {
+                          'subnets': os.environ['SUBNET_IDS'].split(','),
+                          'securityGroups': [os.environ['SECURITY_GROUP_ID']],
+                          'assignPublicIp': 'ENABLED'
+                      }
+                  }
+              )
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Task triggered successfully',
+                      'taskArn': response['tasks'][0]['taskArn'],
+                      'timestamp': datetime.now().isoformat()
+                  })
+              }
+          EOF
+          
+          cd lambda-package
+          zip -r ../reddit-scheduler.zip .
+          
+          # Deploy Lambda function
+          aws lambda create-function \
+            --function-name reddit-analysis-scheduler \
+            --runtime python3.10 \
+            --role arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/lambda-execution-role \
+            --handler lambda_function.lambda_handler \
+            --zip-file fileb://../reddit-scheduler.zip \
+            --environment Variables="{ECS_CLUSTER=${{ env.ECS_CLUSTER }},TASK_DEFINITION=${{ env.ECS_TASK_DEFINITION }}}" \
+            --region ${{ env.AWS_REGION }} || \
+          aws lambda update-function-code \
+            --function-name reddit-analysis-scheduler \
+            --zip-file fileb://../reddit-scheduler.zip \
+            --region ${{ env.AWS_REGION }}
+      - name: Setup CloudWatch Events
+        run: |
+          # Create CloudWatch rule to trigger Lambda every hour
+          aws events put-rule \
+            --name reddit-analysis-hourly \
+            --schedule-expression "rate(1 hour)" \
+            --state ENABLED \
+            --region ${{ env.AWS_REGION }}
+          
+          # Add Lambda as target
+          aws events put-targets \
+            --rule reddit-analysis-hourly \
+            --targets "Id"="1","Arn"="arn:aws:lambda:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:function:reddit-analysis-scheduler" \
+            --region ${{ env.AWS_REGION }}
+  # Monitoring and alerts
+  setup-monitoring:
+    runs-on: ubuntu-latest
+    needs: [deploy-ecs]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create CloudWatch alarms
+        run: |
+          # ECS Service CPU alarm
+          aws cloudwatch put-metric-alarm \
+            --alarm-name "reddit-analysis-high-cpu" \
+            --alarm-description "High CPU usage for Reddit analysis service" \
+            --metric-name CPUUtilization \
+            --namespace AWS/ECS \
+            --statistic Average \
+            --period 300 \
+            --threshold 80 \
+            --comparison-operator GreaterThanThreshold \
+            --evaluation-periods 2 \
+            --alarm-actions "arn:aws:sns:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:alerts" \
+            --dimensions Name=ServiceName,Value=${{ env.ECS_SERVICE }} Name=ClusterName,Value=${{ env.ECS_CLUSTER }} \
+            --region ${{ env.AWS_REGION }}
+          
+          # ECS Service Memory alarm
+          aws cloudwatch put-metric-alarm \
+            --alarm-name "reddit-analysis-high-memory" \
+            --alarm-description "High memory usage for Reddit analysis service" \
+            --metric-name MemoryUtilization \
+            --namespace AWS/ECS \
+            --statistic Average \
+            --period 300 \
+            --threshold 80 \
+            --comparison-operator GreaterThanThreshold \
+            --evaluation-periods 2 \
+            --alarm-actions "arn:aws:sns:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:alerts" \
+            --dimensions Name=ServiceName,Value=${{ env.ECS_SERVICE }} Name=ClusterName,Value=${{ env.ECS_CLUSTER }} \
+            --region ${{ env.AWS_REGION }}
+      - name: Setup deployment success notification
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "📊 Dashboard URL: https://your-alb-dns-name.elb.amazonaws.com"
+          echo "🔍 CloudWatch Logs: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#logsV2:log-groups/log-group/%2Fecs%2Freddit-analysis"
+          echo "📈 ECS Service: https://console.aws.amazon.com/ecs/home?region=${{ env.AWS_REGION }}#/clusters/${{ env.ECS_CLUSTER }}/services/${{ env.ECS_SERVICE }}/details"
