@@ -5,7 +5,7 @@ A cloud-native microservices pipeline for ingesting Reddit data, processing it w
 
 ---
 
-## 🧱 Project Structure
+## Project Structure
 
 ```
 .
@@ -19,7 +19,7 @@ A cloud-native microservices pipeline for ingesting Reddit data, processing it w
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 - Docker & Docker Compose
 - Python 3.10+
@@ -29,7 +29,7 @@ A cloud-native microservices pipeline for ingesting Reddit data, processing it w
 
 ---
 
-## 🚀 Phase 1: Run Locally with Docker Compose
+## Phase 1: Run Locally with Docker Compose
 
 ### 1. Clone the repo
 ```bash
@@ -60,7 +60,7 @@ docker-compose up --build
 
 ---
 
-## 🚢 Phase 2: CI/CD with GitHub Actions
+## Phase 2: CI/CD with GitHub Actions
 
 - GitHub Actions is set up to:
   - Build Docker images for each service
@@ -74,7 +74,7 @@ docker-compose up --build
 
 ---
 
-## ☁️ Phase 3: Deploy to AWS (Terraform + ECS Fargate)
+##  Phase 3: Deploy to AWS (Terraform + ECS Fargate)
 
 ### 1. Initialize Terraform
 
@@ -109,7 +109,7 @@ After pushing Docker images to ECR (via CI/CD), ECS services will pull and run t
 
 ---
 
-## 📊 Monitoring
+## Monitoring
 
 - Logs are automatically sent to **AWS CloudWatch Logs**
 - You can monitor ECS container status, memory/CPU, and task logs in the AWS Console.
