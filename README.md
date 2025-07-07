@@ -116,13 +116,9 @@ After pushing Docker images to ECR (via CI/CD), ECS services will pull and run t
 
 ---
 
-## 📎 License
 
-MIT
 
----
-
-## 🙌 Acknowledgements
+## Acknowledgements
 
 - Reddit API
 - Streamlit
